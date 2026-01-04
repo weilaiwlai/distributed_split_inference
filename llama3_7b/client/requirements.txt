@@ -1,0 +1,10 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+torch==2.1.1
+transformers==4.35.2
+python-multipart==0.0.6
+pydantic==2.5.2
+argparse
+numpy==1.26.1
+transformers==4.35.2
+accelerate==1.2.1
