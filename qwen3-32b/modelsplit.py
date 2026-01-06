@@ -7,8 +7,8 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
-from transformers import LlamaConfig, LlamaPreTrainedModel
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm
+from transformers import Qwen3Config, Qwen3PreTrainedModel
+from transformers.models.qwen3.modeling_qwen3 import Qwen3DecoderLayer, Qwen3RMSNorm
 
 from transformers.activations import ACT2FN
 from transformers.cache_utils import Cache, DynamicCache, StaticCache
@@ -29,29 +29,35 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
+from transformers.models.qwen3.modeling_qwen3 import Qwen3RotaryEmbedding
 
-class LlamaModel_Client(LlamaPreTrainedModel):
+class QwenModel_Client(Qwen3PreTrainedModel):
     """
-    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
+    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`Qwen3DecoderLayer`]
 
     Args:
-        config: LlamaConfig
+        config: Qwen3Config
     """
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: Qwen3Config, client_layers: int):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
+        #self.layers = nn.ModuleList(
+        #    [Qwen3DecoderLayer(config, layer_idx) for layer_idx in range(int(config.num_hidden_layers / 2))] # int(config.num_hidden_layers / 4)
+        #)
         self.layers = nn.ModuleList(
-            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(int(config.num_hidden_layers / 4))] # int(config.num_hidden_layers / 4)
+            [Qwen3DecoderLayer(config, layer_idx) for layer_idx in range(client_layers)] # int(config.num_hidden_layers / 4)
         )
-        # self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        # self.norm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
         self.post_init()
+
+        self.rotary_emb = Qwen3RotaryEmbedding(config=self.config)
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -115,6 +121,9 @@ class LlamaModel_Client(LlamaPreTrainedModel):
         # embed positions
         hidden_states = inputs_embeds
 
+        # get position embeddings
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -140,17 +149,17 @@ class LlamaModel_Client(LlamaPreTrainedModel):
                     hidden_states,
                     attention_mask=causal_mask,
                     position_ids=position_ids,
-                    position_embeddings=(cos, sin),
+                    position_embeddings=position_embeddings,
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
                 )
 
-            hidden_states = layer_outputs[0]
+            hidden_states = layer_outputs
 
-            if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+            #if use_cache:
+                #next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -256,28 +265,34 @@ class LlamaModel_Client(LlamaPreTrainedModel):
         return causal_mask
     
     
-class LlamaModel_Server(LlamaPreTrainedModel):
+class QwenModel_Server(Qwen3PreTrainedModel):
     """
-    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
+    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`Qwen3DecoderLayer`]
 
     Args:
-        config: LlamaConfig
+        config: Qwen3Config
     """
 
-    def __init__(self, config: LlamaConfig):
+    def __init__(self, config: Qwen3Config, client_layers: int):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
         # self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
+        #self.layers = nn.ModuleList(
+        #    [Qwen3DecoderLayer(config, layer_idx) for layer_idx in range(int(config.num_hidden_layers / 2))] # int(3 * config.num_hidden_layers / 4)
+        #)
+        server_layers = int(config.num_hidden_layers) - client_layers
         self.layers = nn.ModuleList(
-            [LlamaDecoderLayer(config, layer_idx) for layer_idx in range(int(3 * config.num_hidden_layers / 4))] # int(3 * config.num_hidden_layers / 4)
+            [Qwen3DecoderLayer(config, layer_idx) for layer_idx in range(server_layers)] # int(3 * config.num_hidden_layers / 4)
         )
-        self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.norm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
 
         # Initialize weights and apply final processing
         self.post_init()
+
+        self.rotary_emb = Qwen3RotaryEmbedding(config=self.config)
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -348,10 +363,15 @@ class LlamaModel_Server(LlamaPreTrainedModel):
         all_self_attns = () if output_attentions else None
         # next_decoder_cache = None
         # import pdb; pdb.set_trace
-        for decoder_layer in self.layers:
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        for i, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
             # import pdb; pdb.set_trace()
+            if hidden_states == 30: 
+                hidden_states = hidden_states.to('cuda:1')
+                position_ids = position_ids.to('cuda:1')
+                position_embeddings = tuple(pe.to('cuda:1') if hasattr(pe, 'to') else pe for pe in position_embeddings)
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
@@ -368,16 +388,17 @@ class LlamaModel_Server(LlamaPreTrainedModel):
                     hidden_states,
                     attention_mask=causal_mask,
                     position_ids=position_ids,
+                    position_embeddings=position_embeddings,
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
                 )
 
-            hidden_states = layer_outputs[0]
+            hidden_states = layer_outputs
 
-            if use_cache:
-                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+            #if use_cache:
+                #next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
