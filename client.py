@@ -35,7 +35,7 @@ class ModelClient:
         self.configuration = Qwen3Config.from_pretrained(model_name)
         self.total_layers=self.configuration.num_hidden_layers  #64
 
-        self.model_client = QwenModel_Client(self.configuration, client_layers)
+        self.model_client = QwenModel_Client(self.configuration, client_layers, max_context_len=self.max_new_tokens)
         print("Loading split pre-trained weights...")
         self.model_client = load_client_pretrain(self.model_client, model_name, self.total_layers, client_layers)
         self.model_client = self.model_client.half().cuda(0)
@@ -152,6 +152,7 @@ class ModelClient:
                     break
                 input_ids = torch.cat([input_ids, predicted_token_id.unsqueeze(0)], dim=-1)
             self.metrics.end_generation()
+        self.model_client.reset()
         self.metrics.print_metrics()
         return input_ids
 

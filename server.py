@@ -63,13 +63,11 @@ class ModelServer:
         
         self.shutdown_event = threading.Event()
         
-        # 启动服务器循环
         self.server_thread = threading.Thread(target=self._server_loop, name="Server-Loop")
         self.server_thread.start()
     
     def handle_decode_request(self, msg)-> RespTokenIdMessage:
         """处理来自客户端的隐藏状态，执行前向传播并返回预测的token ID"""
-        # 将隐藏状态移到适当的GPU设备
         hidden_states = msg.hidden_states.to(self.device) if msg.hidden_states.device.type == 'cpu' else msg.hidden_states
         causal_mask = None
         position_ids = torch.arange(hidden_states.shape[1], dtype=torch.long, device=self.device).unsqueeze(0)
