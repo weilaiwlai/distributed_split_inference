@@ -31,6 +31,8 @@ from transformers.utils import (
 )
 from transformers.models.qwen3.modeling_qwen3 import Qwen3RotaryEmbedding
 
+logger = logging.get_logger(__name__)
+
 class QwenModel_Client(Qwen3PreTrainedModel):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`Qwen3DecoderLayer`]
@@ -65,7 +67,6 @@ class QwenModel_Client(Qwen3PreTrainedModel):
     def set_input_embeddings(self, value):
         self.embed_tokens = value
 
-    # @add_start_docstrings_to_model_forward(LLAMA_INPUTS_DOCSTRING)
     def forward(
         self,
         labels:Optional[torch.Tensor] = None, #new add
@@ -92,15 +93,13 @@ class QwenModel_Client(Qwen3PreTrainedModel):
                 "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
             )
 
-        if self.gradient_checkpointing and self.training and use_cache:
-            logger.warning_once(
-                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-            )
-            use_cache = False
-
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+
+        print(past_key_values)
         return_legacy_cache = False
         if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
             return_legacy_cache = True
@@ -133,28 +132,16 @@ class QwenModel_Client(Qwen3PreTrainedModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
-                    decoder_layer.__call__,
-                    hidden_states,
-                    causal_mask,
-                    position_ids,
-                    past_key_values,
-                    output_attentions,
-                    use_cache,
-                    cache_position,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=causal_mask,
-                    position_ids=position_ids,
-                    position_embeddings=position_embeddings,
-                    past_key_value=past_key_values,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                )
+            layer_outputs = decoder_layer(
+                hidden_states,
+                attention_mask=causal_mask,
+                position_ids=position_ids,
+                position_embeddings=position_embeddings,
+                past_key_values=past_key_values,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+            )
 
             hidden_states = layer_outputs
 
@@ -367,7 +354,7 @@ class QwenModel_Server(Qwen3PreTrainedModel):
         for i, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
-            # import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()i
             if i == 30: 
                 hidden_states = hidden_states.to('cuda:1')
                 position_ids = position_ids.to('cuda:1')
@@ -389,7 +376,7 @@ class QwenModel_Server(Qwen3PreTrainedModel):
                     attention_mask=causal_mask,
                     position_ids=position_ids,
                     position_embeddings=position_embeddings,
-                    past_key_value=past_key_values,
+                    past_key_values=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,

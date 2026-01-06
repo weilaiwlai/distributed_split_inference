@@ -53,6 +53,8 @@ with torch.no_grad():
     start_time=time.time()
     for i in range(128):
         hidden_states, causal_mask, position_ids = model_client(**inputs)
+        print(hidden_states.shape)
+        print(position_ids)
         outputs = model_server(hidden_states=hidden_states, causal_mask=causal_mask, position_ids=position_ids)
         logits = lm_head(outputs[0])
         last_token_logits = logits[:, -1, :]
