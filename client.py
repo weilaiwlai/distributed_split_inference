@@ -132,7 +132,7 @@ class ModelClient:
         self.req_queue.put((req_msg, fut))
         return fut
     
-    def forward(self, inputs):
+    def generate(self, inputs):
         input_ids = inputs['input_ids'].to('cuda')
         print("Split inference token by token:")
         seq_id = str(uuid.uuid4())
@@ -169,6 +169,6 @@ if __name__ == "__main__":
     model=ModelClient(model_name, client_layers, max_new_tokens=128)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     inputs = tokenizer(input_sentence, return_tensors='pt')
-    output=model.forward(inputs)
+    output=model.generate(inputs)
     print(tokenizer.decode(output[0]))
     model.close()

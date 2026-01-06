@@ -26,7 +26,7 @@ class Metrics:
         """Record time for first token"""
         if self.is_generating and self.start_time is not None and self.ttft is None:
             self.first_token_time = time.time()
-            self.ttft = self.first_token_time - self.start_time
+            self.ttft = (self.first_token_time - self.start_time) * 1000  # Convert to milliseconds
             self.token_count = 1
     
     def record_next_token(self):
@@ -40,11 +40,11 @@ class Metrics:
                 # Calculate time for this token
                 if len(self.topt_list) > 0:
                     # Use previous token time to calculate TOPT
-                    topt = current_time - (self.first_token_time if self.token_count == 1 
-                                          else (self.first_token_time + sum(self.topt_list)))
+                    topt = (current_time - (self.first_token_time if self.token_count == 1 
+                                          else (self.first_token_time + sum(t/1000 for t in self.topt_list)))) * 1000  # Convert to milliseconds
                 else:
                     if self.ttft is not None:
-                        topt = current_time - (self.start_time + self.ttft)
+                        topt = (current_time - (self.start_time + self.ttft/1000)) * 1000  # Convert to milliseconds
                     else:
                         # If first token not recorded yet, treat as first
                         self.record_first_token()
@@ -60,7 +60,7 @@ class Metrics:
     
     @property
     def avg_topt(self):
-        """Average Time Of Per Token (excluding first token)"""
+        """Average Time Of Per Token in milliseconds (excluding first token)"""
         if len(self.topt_list) > 0:
             return sum(self.topt_list) / len(self.topt_list)
         return None
@@ -88,9 +88,9 @@ class Metrics:
         metrics = self.get_metrics()
         print("\n=== Inference Performance Metrics ===")
         if metrics['ttft'] is not None:
-            print(f"Time To First Token (TTFT): {metrics['ttft']:.4f}s")
+            print(f"Time To First Token (TTFT): {metrics['ttft']:.2f}ms")
         if metrics['avg_topt'] is not None:
-            print(f"Average Time Per Token (TOPT): {metrics['avg_topt']:.4f}s")
+            print(f"Average Time Per Token (TOPT): {metrics['avg_topt']:.2f}ms")
         print(f"Total Generation Time: {metrics['total_time']:.4f}s")
         print(f"Total Tokens Generated: {metrics['token_count']}")
         print(f"Average Throughput: {metrics['avg_throughput']:.2f} tokens/s")

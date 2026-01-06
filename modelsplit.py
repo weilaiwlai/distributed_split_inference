@@ -99,7 +99,6 @@ class QwenModel_Client(Qwen3PreTrainedModel):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
 
-        print(past_key_values)
         return_legacy_cache = False
         if use_cache and not isinstance(past_key_values, Cache):  # kept for BC (non `Cache` `past_key_values` inputs)
             return_legacy_cache = True
@@ -260,16 +259,15 @@ class QwenModel_Server(Qwen3PreTrainedModel):
         config: Qwen3Config
     """
 
-    def __init__(self, config: Qwen3Config, client_layers: int):
+    def __init__(self, config: Qwen3Config, client_layers: int, model_split_layer: int):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
 
-        # self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
-        #self.layers = nn.ModuleList(
-        #    [Qwen3DecoderLayer(config, layer_idx) for layer_idx in range(int(config.num_hidden_layers / 2))] # int(3 * config.num_hidden_layers / 4)
-        #)
-        server_layers = int(config.num_hidden_layers) - client_layers
+        self.client_layers=client_layers
+        self.model_split_layer=model_split_layer
+
+        server_layers = int(config.num_hidden_layers) - self.client_layers
         self.layers = nn.ModuleList(
             [Qwen3DecoderLayer(config, layer_idx) for layer_idx in range(server_layers)] # int(3 * config.num_hidden_layers / 4)
         )
@@ -355,7 +353,7 @@ class QwenModel_Server(Qwen3PreTrainedModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
             # import pdb; pdb.set_trace()i
-            if i == 30: 
+            if i == self.model_split_layer: 
                 hidden_states = hidden_states.to('cuda:1')
                 position_ids = position_ids.to('cuda:1')
                 position_embeddings = tuple(pe.to('cuda:1') if hasattr(pe, 'to') else pe for pe in position_embeddings)

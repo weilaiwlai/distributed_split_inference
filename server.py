@@ -21,14 +21,13 @@ import uuid
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 # Load model configuration and tokenizer
-model_name = "/opt/models/Qwen3-32B"
-model_layers_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
+model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
 client_layers=2
+addr="tcp://0.0.0.0:5558"
 
 class ModelServer:
     def __init__(self, 
                 model_name:str, 
-                model_layers_name:str, 
                 client_layers:int,
                 addr: str = "tcp://0.0.0.0:5558"):
         self.device = torch.device("cuda:0")
@@ -36,15 +35,16 @@ class ModelServer:
         self.configuration = Qwen3Config.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.total_layers=self.configuration.num_hidden_layers  #64
+        self.model_split_layer=30
 
-        self.model_server = QwenModel_Server(self.configuration, client_layers)
+        self.model_server = QwenModel_Server(self.configuration, client_layers, self.model_split_layer)
         self.lm_head = nn.Linear(self.configuration.hidden_size, self.configuration.vocab_size, bias=False)
         print("Loading split pre-trained weights...")
-        self.model_server = load_server_pretrain(self.model_server, model_layers_name, self.total_layers, client_layers)
-        self.lm_head = load_lm_head_pretrain(self.lm_head, model_layers_name)
+        self.model_server = load_server_pretrain(self.model_server, model_name, self.total_layers, client_layers)
+        self.lm_head = load_lm_head_pretrain(self.lm_head, model_name)
 
         for name, param in self.model_server.named_parameters():
-            if any(f'layers.{i}.' in name for i in range(30)): 
+            if any(f'layers.{i}.' in name for i in range(self.model_split_layer)): 
                 param.data = param.data.half().to('cuda:0')
             else:  
                 param.data = param.data.half().to('cuda:1')
@@ -78,7 +78,8 @@ class ModelServer:
             outputs = self.model_server(
                 hidden_states=hidden_states,
                 causal_mask=causal_mask,
-                position_ids=position_ids
+                position_ids=position_ids,
+                model_split_layer=self.model_split_layer
             )
             logits = self.lm_head(outputs[0])
             last_token_logits = logits[:, -1, :]
@@ -148,7 +149,7 @@ class ModelServer:
         self.ctx.term()
 
 if __name__ == "__main__":
-    server = ModelServer(model_name, model_layers_name, client_layers)
+    server = ModelServer(model_name, client_layers, addr)
     try:
         # 保持服务器运行
         while True:
