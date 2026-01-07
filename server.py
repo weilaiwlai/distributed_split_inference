@@ -14,7 +14,7 @@ import time
 import zmq
 import threading
 from serial import MsgpackEncoder, MsgpackDecoder
-from common import ReqHiddenStatesMessage, RespTokenIdMessage
+from common import ReqHiddenStatesMessage, RespTokenIdMessage, ReqEndMessage, RespEndMessage
 from utils import load_client_pretrain, load_lm_head_pretrain, load_server_pretrain
 import uuid
 
@@ -58,7 +58,7 @@ class ModelServer:
         self.sock.bind(self.addr)
 
         self.encoder = MsgpackEncoder()
-        self.decoder = MsgpackDecoder(ReqHiddenStatesMessage | RespTokenIdMessage)
+        self.decoder = MsgpackDecoder(ReqHiddenStatesMessage | RespTokenIdMessage | ReqEndMessage)
         
         
         self.shutdown_event = threading.Event()
@@ -69,15 +69,11 @@ class ModelServer:
     def handle_decode_request(self, msg)-> RespTokenIdMessage:
         """处理来自客户端的隐藏状态，执行前向传播并返回预测的token ID"""
         hidden_states = msg.hidden_states.to(self.device) if msg.hidden_states.device.type == 'cpu' else msg.hidden_states
-        causal_mask = None
-        position_ids = torch.arange(hidden_states.shape[1], dtype=torch.long, device=self.device).unsqueeze(0)
-            
+
         with torch.no_grad():
             outputs = self.model_server(
                 hidden_states=hidden_states,
-                causal_mask=causal_mask,
-                position_ids=position_ids,
-                model_split_layer=self.model_split_layer
+                use_cache=True,
             )
             logits = self.lm_head(outputs[0])
             last_token_logits = logits[:, -1, :]
@@ -118,6 +114,13 @@ class ModelServer:
                 
                 if isinstance(msg, ReqHiddenStatesMessage):
                     resp_msg = self.handle_decode_request(msg)
+                    print(f"[Server] received {type(msg).__name__} request_id={msg.request_id}, seq_id={msg.seq_id}")
+                elif isinstance(msg, ReqEndMessage):
+                    self.model_server.reset()
+                    resp_msg = RespEndMessage(
+                        request_id=msg.request_id,
+                        seq_id=msg.seq_id,
+                    )
                     print(f"[Server] received {type(msg).__name__} request_id={msg.request_id}, seq_id={msg.seq_id}")
                 else:
                     print(f"[Server] received unexpected message type: {type(msg)}")

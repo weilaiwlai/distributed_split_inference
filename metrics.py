@@ -1,5 +1,7 @@
 import os
 import time
+import json
+from datetime import datetime
 
 class Metrics:
     """Metrics class for tracking inference performance"""
@@ -95,3 +97,34 @@ class Metrics:
         print(f"Total Tokens Generated: {metrics['token_count']}")
         print(f"Average Throughput: {metrics['avg_throughput']:.2f} tokens/s")
         print("=====================================")
+
+    def save_metrics_to_file(self, save_dir: str = "./outputs/Qwen3-32B"):
+        metrics = self.get_metrics()
+        metrics["batch_timestamp"] = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
+
+        filename = "gsm8k_100mbit_client_layers_2.json"
+        save_path = os.path.join(save_dir, filename)
+        
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+            
+            if os.path.exists(save_path):
+                with open(save_path, "r", encoding="utf-8") as f:
+                    try:
+                        metrics_list = json.load(f)
+                        if not isinstance(metrics_list, list):
+                            metrics_list = []
+                    except json.JSONDecodeError:
+                        metrics_list = []
+            else:
+                metrics_list = []
+
+            metrics_list.append(metrics)
+            
+            with open(save_path, "w", encoding="utf-8") as f:
+                json.dump(metrics_list, f, ensure_ascii=False, indent=4)
+            
+            print(f"\nThe performance indicators have been appended to the file: {save_path}")
+
+        except Exception as e:
+            print(f"\nThe performance indicators save to the file failed: {str(e)}")

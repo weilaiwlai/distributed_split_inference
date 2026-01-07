@@ -57,7 +57,7 @@ class ModelClient:
         self.receiver_thread = threading.Thread(target=self._receiver_loop, name="LLM-Receiver")
 
         self.encoder = MsgpackEncoder()
-        self.decoder = MsgpackDecoder(ReqHiddenStatesMessage | RespTokenIdMessage)
+        self.decoder = MsgpackDecoder(ReqHiddenStatesMessage | RespTokenIdMessage | RespEndMessage)
 
         self.sender_thread.start()
         self.receiver_thread.start()
@@ -132,29 +132,54 @@ class ModelClient:
         self.req_queue.put((req_msg, fut))
         return fut
     
-    def generate(self, inputs):
-        input_ids = inputs['input_ids'].to('cuda')
-        print("Split inference token by token:")
-        seq_id = str(uuid.uuid4())
+    def prefill(self, input_ids, seq_id):
+        """
+        Prefill阶段：处理输入序列的全部token
+        """
         self.metrics.start_generation()
+        
         with torch.no_grad():
-            for i in range(self.max_new_tokens):
-                hidden_states, causal_mask, position_ids = self.model_client(input_ids=input_ids)
+            hidden_states, causal_mask, position_ids = self.model_client(input_ids=input_ids)
+            fut_decode = self.request_decode(seq_id, hidden_states)
+            msg_decode = fut_decode.result()
+            predicted_token_id = msg_decode.predicted_token_id.to(self.device)
+            self.metrics.record_first_token()
+            
+        return predicted_token_id
+
+    def decode(self, input_ids, max_new_tokens, seq_id):   
+        predicted_token_id = input_ids[:, -1]     
+        with torch.no_grad():
+            for i in range(max_new_tokens):
+                hidden_states, causal_mask, position_ids = self.model_client(input_ids=predicted_token_id.unsqueeze(0))
                 fut_decode = self.request_decode(seq_id, hidden_states)
                 msg_decode = fut_decode.result()
                 predicted_token_id = msg_decode.predicted_token_id.to(self.device)
-                if i == 0:
-                    self.metrics.record_first_token()
-                else:
-                    self.metrics.record_next_token()
+                self.metrics.record_next_token()           
                 if predicted_token_id.item() == self.configuration.eos_token_id:
                     print("Generated EOS token, stopping generation.")
                     break
+                
                 input_ids = torch.cat([input_ids, predicted_token_id.unsqueeze(0)], dim=-1)
-            self.metrics.end_generation()
-        self.model_client.reset()
-        self.metrics.print_metrics()
+        
+        self.metrics.end_generation()
         return input_ids
+
+    def generate(self, inputs):
+        input_ids = inputs['input_ids'].to(self.device) 
+        seq_id = str(uuid.uuid4())       
+        first_token = self.prefill(input_ids, seq_id)
+        
+        input_ids = torch.cat([input_ids, first_token.unsqueeze(0)], dim=-1)     
+        output_ids = self.decode(input_ids, self.max_new_tokens - 1, seq_id)
+
+        fut_end = self.request_end(seq_id)
+        self.model_client.reset()
+        msg_end = fut_end.result()
+        
+        self.metrics.print_metrics()
+        self.metrics.save_metrics_to_file()
+        return output_ids
 
     
     def close(self):
@@ -167,7 +192,7 @@ if __name__ == "__main__":
     model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
     client_layers=2
     input_sentence = "Who is Crayon Shinchan?\n"
-    model=ModelClient(model_name, client_layers, max_new_tokens=128)
+    model=ModelClient(model_name, client_layers, max_new_tokens=256)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     inputs = tokenizer(input_sentence, return_tensors='pt')
     output=model.generate(inputs)
