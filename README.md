@@ -10,3 +10,19 @@
 
 这种架构允许在资源受限的设备上运行大型语言模型，同时利用服务器的强大计算能力。
 
+### 启动服务器
+```bash
+python run_server.py
+```
+
+### 运行客户端
+```bash
+python run_client.py
+```
+
+## 配置参数
+
+- `model_name`: 模型路径（如`/opt/models/Qwen3-32B/layers_safetensors`）
+- `client_layers`: 客户端运行的层数
+- `max_new_tokens`: 最大生成token数
+- `addr`: 通信地址（默认为`tcp://0.0.0.0:5558`）
