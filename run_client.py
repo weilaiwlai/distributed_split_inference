@@ -10,7 +10,7 @@ class Config:
         self.num_examples = 100
         self.random_seed = 42
 
-model_name = "/opt/models/Qwen3-32B/layers_safetensors"
+model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
 client_layers=2
 
 def client():
@@ -18,6 +18,7 @@ def client():
     client = ModelClient(
         model_name,
         client_layers,
+        max_new_tokens=1024,
         addr="tcp://202.204.62.144:5558",
     )
 
@@ -37,9 +38,9 @@ def client():
         print(prompt_ids.shape)
 
         # 发起生成
-        result = client.generate(prompt_ids)
+        result = client.generate(prompt_ids.unsqueeze(0))
         print("\n=== Generate Result ===")
-        print(tokenizer.decode(result))
+        print(tokenizer.decode(result[0]))
 
     client.close()
 

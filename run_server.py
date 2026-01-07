@@ -1,7 +1,7 @@
 from server import ModelServer
 import time
 
-model_name = "/opt/models/Qwen3-32B/layers_safetensors"
+model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
 client_layers=2
 addr="tcp://0.0.0.0:5558"
 

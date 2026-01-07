@@ -129,15 +129,14 @@ class QwenModel_Client(Qwen3PreTrainedModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         next_decoder_cache = None
-        print(self.kv_cache)
         # import pdb; pdb.set_trace()
         for decoder_layer in self.layers:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            print(hidden_states.shape)
-            print(position_ids)
-            print(cache_position)
+            #print(hidden_states.shape)
+            #print(position_ids)
+            #print(cache_position)
             layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=causal_mask,
@@ -344,10 +343,10 @@ class QwenModel_Server(Qwen3PreTrainedModel):
         # next_decoder_cache = None
         # import pdb; pdb.set_trace
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
-        print(use_cache)
-        print(hidden_states.shape)
-        print(position_ids)
-        print(cache_position)
+        #print(use_cache)
+        #print(hidden_states.shape)
+        #print(position_ids)
+        #print(cache_position)
         for i, decoder_layer in enumerate(self.layers):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)

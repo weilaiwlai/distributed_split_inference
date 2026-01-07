@@ -121,7 +121,7 @@ class ModelServer:
                         request_id=msg.request_id,
                         seq_id=msg.seq_id,
                     )
-                    print(f"[Server] received {type(msg).__name__} request_id={msg.request_id}, seq_id={msg.seq_id}")
+                    print(f"[Server] received {type(msg).__name__} request_id={msg.request_id}, seq_id={msg.seq_id} and reset model server")
                 else:
                     print(f"[Server] received unexpected message type: {type(msg)}")
                     continue

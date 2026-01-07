@@ -79,7 +79,7 @@ class Metrics:
         return {
             'ttft': self.ttft,
             'avg_topt': self.avg_topt,
-            'topt_list': self.topt_list,
+            #'topt_list': self.topt_list,
             'total_time': self.total_time,
             'token_count': self.token_count,
             'avg_throughput': self.avg_throughput

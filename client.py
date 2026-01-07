@@ -165,8 +165,8 @@ class ModelClient:
         self.metrics.end_generation()
         return input_ids
 
-    def generate(self, inputs):
-        input_ids = inputs['input_ids'].to(self.device) 
+    def generate(self, input_ids):
+        #input_ids = inputs['input_ids'].to(self.device) 
         seq_id = str(uuid.uuid4())       
         first_token = self.prefill(input_ids, seq_id)
         
@@ -192,9 +192,10 @@ if __name__ == "__main__":
     model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
     client_layers=2
     input_sentence = "Who is Crayon Shinchan?\n"
-    model=ModelClient(model_name, client_layers, max_new_tokens=256)
+    model=ModelClient(model_name, client_layers, max_new_tokens=256, addr="tcp://202.204.62.144:5558")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     inputs = tokenizer(input_sentence, return_tensors='pt')
-    output=model.generate(inputs)
+    input_ids = inputs['input_ids'].to(model.device)
+    output=model.generate(input_ids)
     print(tokenizer.decode(output[0]))
     model.close()
