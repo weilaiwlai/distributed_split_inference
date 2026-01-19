@@ -23,8 +23,6 @@ from common import ReqHiddenStatesMessage,RespTokenIdMessage,ReqEndMessage,RespE
 from utils import load_client_pretrain, load_lm_head_pretrain, load_server_pretrain
 from metrics import Metrics
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
-
 class ModelClient:
     def __init__(self, 
                 model_name:str, 
@@ -42,6 +40,11 @@ class ModelClient:
         self.model_client = load_client_pretrain(self.model_client, model_name, self.total_layers, client_layers)
         self.model_client = self.model_client.half().cuda(0)
         self.model_client.eval()
+
+        if isinstance(self.configuration.eos_token_id, int):
+            self.eos_token_ids = {self.configuration.eos_token_id}
+        else: 
+            self.eos_token_ids = set(self.configuration.eos_token_id)
 
         self.addr = addr
         self.ctx = zmq.Context()
@@ -162,7 +165,7 @@ class ModelClient:
                 msg_decode = fut_decode.result()
                 predicted_token_id = msg_decode.predicted_token_id.to(self.device)
                 self.metrics.record_next_token()           
-                if predicted_token_id.item() == self.configuration.eos_token_id:
+                if predicted_token_id.item() in self.eos_token_ids:
                     print("Generated EOS token, stopping generation.")
                     break
                 
