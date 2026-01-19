@@ -2,15 +2,6 @@ import json
 import os
 
 def process_json_data(file_path):
-    """
-    处理指定JSON文件，计算除第一条数据外所有数值字段的平均值
-    
-    Args:
-        file_path (str): JSON数据文件的路径
-    
-    Returns:
-        dict: 各数值字段的平均值结果
-    """
     # 1. 检查文件是否存在
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"错误：找不到文件 {file_path}")
@@ -71,8 +62,7 @@ def save_result(result, output_path="average_result.json"):
         raise Exception(f"保存结果时出错：{str(e)}")
 
 # ====================== 请修改这里的配置 ======================
-# 替换为你的JSON数据文件的实际路径（绝对路径/相对路径都可以）
-INPUT_JSON_PATH = "gsm8k_100mbit_client_layers_2.json"  # 例如："./metrics_data.json" 或 "C:/data/results.json"
+INPUT_JSON_PATH = "./outputs/Qwen3-32B/humaneval_100mbit_client_layers_1.json"  # 例如："./metrics_data.json" 或 "C:/data/results.json"
 # 结果保存路径（可选修改）
 OUTPUT_JSON_PATH = "average_result.json"
 # =============================================================

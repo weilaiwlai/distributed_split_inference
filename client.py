@@ -6,8 +6,10 @@ from torch import nn
 from transformers import (
     AutoTokenizer,
     Qwen3Config,
+    LlamaConfig,
 )
-from modelsplit import QwenModel_Client, QwenModel_Server
+from qwen_modelsplit import QwenModel_Client
+from llama_modelsplit import LlamaModel_Client
 import queue
 import os
 import time
@@ -21,21 +23,21 @@ from common import ReqHiddenStatesMessage,RespTokenIdMessage,ReqEndMessage,RespE
 from utils import load_client_pretrain, load_lm_head_pretrain, load_server_pretrain
 from metrics import Metrics
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 
 class ModelClient:
     def __init__(self, 
                 model_name:str, 
                 client_layers:int,
                 max_new_tokens: int = 128,
-                addr: str = "tcp://127.0.0.1:5558"):
+                addr: str = "tcp://202.204.62.144:5558"):
         self.max_new_tokens = max_new_tokens
         self.device = torch.device("cuda:0")
 
-        self.configuration = Qwen3Config.from_pretrained(model_name)
+        self.configuration = LlamaConfig.from_pretrained(model_name)
         self.total_layers=self.configuration.num_hidden_layers  #64
 
-        self.model_client = QwenModel_Client(self.configuration, client_layers, max_context_len=self.max_new_tokens)
+        self.model_client = LlamaModel_Client(self.configuration, client_layers, max_context_len=self.max_new_tokens)
         print("Loading split pre-trained weights...")
         self.model_client = load_client_pretrain(self.model_client, model_name, self.total_layers, client_layers)
         self.model_client = self.model_client.half().cuda(0)
@@ -140,6 +142,8 @@ class ModelClient:
         
         with torch.no_grad():
             hidden_states, causal_mask, position_ids = self.model_client(input_ids=input_ids)
+            #print(f"prefill_hidden_states shape: {hidden_states.shape}")
+            print(position_ids)
             fut_decode = self.request_decode(seq_id, hidden_states)
             msg_decode = fut_decode.result()
             predicted_token_id = msg_decode.predicted_token_id.to(self.device)
@@ -152,6 +156,9 @@ class ModelClient:
         with torch.no_grad():
             for i in range(max_new_tokens):
                 hidden_states, causal_mask, position_ids = self.model_client(input_ids=predicted_token_id.unsqueeze(0))
+                #print(f"decode_hidden_states shape: {hidden_states.shape}")
+                print(causal_mask)
+                print(position_ids)
                 fut_decode = self.request_decode(seq_id, hidden_states)
                 msg_decode = fut_decode.result()
                 predicted_token_id = msg_decode.predicted_token_id.to(self.device)
@@ -189,8 +196,9 @@ class ModelClient:
         self.ctx.destroy()
 
 if __name__ == "__main__":
-    model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
-    client_layers=2
+    #model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
+    model_name = "/home/yueshuaibing/models/Llama-3.1-70B/layers_safetensors"
+    client_layers=3
     input_sentence = "Who is Crayon Shinchan?\n"
     model=ModelClient(model_name, client_layers, max_new_tokens=256, addr="tcp://202.204.62.144:5558")
     tokenizer = AutoTokenizer.from_pretrained(model_name)

@@ -6,49 +6,57 @@ from torch import nn
 from transformers import (
     AutoTokenizer,
     Qwen3Config,
+    LlamaConfig
 )
 from transformers.models.llama.modeling_llama import LlamaForCausalLM 
-from modelsplit import QwenModel_Client, QwenModel_Server
+from qwen_modelsplit import QwenModel_Client, QwenModel_Server
+from llama_modelsplit import LlamaModel_Client, LlamaModel_Server
 import os
 import time
 import zmq
 import threading
 from serial import MsgpackEncoder, MsgpackDecoder
 from common import ReqHiddenStatesMessage, RespTokenIdMessage, ReqEndMessage, RespEndMessage
-from utils import load_client_pretrain, load_lm_head_pretrain, load_server_pretrain
+from utils import load_client_pretrain, load_lm_head_pretrain, load_server_pretrain, load_large_server_pretrain
 import uuid
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 # Load model configuration and tokenizer
-model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
-client_layers=2
+#model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
+model_name = "/home/yueshuaibing/models/Llama-3.1-70B/layers_safetensors"
+is_large_model=True
+client_layers=3
 addr="tcp://0.0.0.0:5558"
 
 class ModelServer:
     def __init__(self, 
                 model_name:str, 
                 client_layers:int,
-                addr: str = "tcp://0.0.0.0:5558"):
+                addr: str = "tcp://0.0.0.0:5558",
+                is_large_model: bool = False):
         self.device = torch.device("cuda:0")
 
-        self.configuration = Qwen3Config.from_pretrained(model_name)
+        self.configuration = LlamaConfig.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.total_layers=self.configuration.num_hidden_layers  #64
-        self.model_split_layer=30
+        self.total_layers=self.configuration.num_hidden_layers 
+        self.model_split_layer=20
 
-        self.model_server = QwenModel_Server(self.configuration, client_layers, self.model_split_layer)
+        self.model_server = LlamaModel_Server(self.configuration, client_layers, self.model_split_layer)
         self.lm_head = nn.Linear(self.configuration.hidden_size, self.configuration.vocab_size, bias=False)
         print("Loading split pre-trained weights...")
-        self.model_server = load_server_pretrain(self.model_server, model_name, self.total_layers, client_layers)
-        self.lm_head = load_lm_head_pretrain(self.lm_head, model_name)
+        if is_large_model:
+            self.model_server = load_large_server_pretrain(self.model_server, model_name, self.total_layers, client_layers)
+        else:
+            self.model_server = load_server_pretrain(self.model_server, model_name, self.total_layers, client_layers)
+            for name, param in self.model_server.named_parameters():
+                if any(f'layers.{i}.' in name for i in range(self.model_split_layer)): 
+                    param.data = param.data.half().to('cuda:0')
+                else:  
+                    param.data = param.data.half().to('cuda:1')
 
-        for name, param in self.model_server.named_parameters():
-            if any(f'layers.{i}.' in name for i in range(self.model_split_layer)): 
-                param.data = param.data.half().to('cuda:0')
-            else:  
-                param.data = param.data.half().to('cuda:1')
-        self.lm_head = self.lm_head.half().cuda(1)  
+        self.lm_head = load_lm_head_pretrain(self.lm_head, model_name)
+        self.lm_head = self.lm_head.half().cuda(3)  
 
         self.model_server.eval()
 
@@ -150,7 +158,7 @@ class ModelServer:
         self.ctx.term()
 
 if __name__ == "__main__":
-    server = ModelServer(model_name, client_layers, addr)
+    server = ModelServer(model_name, client_layers, addr, is_large_model)
     try:
         # 保持服务器运行
         while True:

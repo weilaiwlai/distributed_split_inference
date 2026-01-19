@@ -8,6 +8,10 @@ from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from safetensors.torch import load_file
 import os
+import time
+import gc
+import re
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
 
 def load_multiple_safetensors(filenames):
@@ -193,3 +197,78 @@ def load_lm_head_pretrain(lm_head, model_name):
     
     print(f"LM Head加载完成，权重形状: {lm_head.weight.shape}")
     return lm_head
+
+def get_gpu_memory(device_id):
+    return torch.cuda.memory_allocated(f"cuda:{device_id}") / (1024 ** 2)
+
+def load_large_server_pretrain(server_model, model_name, total_layers=80, client_layers=2):
+    server_layer_count = total_layers - client_layers
+    layers_per_group = 20
+    num_groups = (server_layer_count + layers_per_group - 1) // layers_per_group
+
+    norm_file = os.path.join(model_name, "model.norm.safetensors")
+    if os.path.exists(norm_file):
+        norm_weight = load_file(norm_file, device="cuda:3")["model.norm.weight"].half()
+        server_model.norm.weight.data = norm_weight
+    else:
+        print("⚠️ Norm file not found, skipping...")
+
+    all_layers = []
+    total_memory_mb = 0.0
+
+    for group_id in range(num_groups):
+        start_idx = group_id * layers_per_group
+        end_idx = min(start_idx + layers_per_group, server_layer_count)
+        if start_idx >= server_layer_count:
+            break
+
+        device_id = group_id % 4
+        device = f"cuda:{device_id}"
+        print(f"\nLoading group {group_id}: layers [{start_idx} ～ {end_idx}) to {device}")
+
+        current_group = []
+        orig_indices = [client_layers + i for i in range(start_idx, end_idx)]
+
+        for local_i, orig_idx in enumerate(orig_indices):
+            mem_before = get_gpu_memory(device_id)
+
+            layer = LlamaDecoderLayer(server_model.config, layer_idx=orig_idx)
+
+            layer_file = os.path.join(model_name, f"model.layers.{orig_idx}.safetensors")
+
+            layer_dict = load_file(layer_file)
+            server_layer_update_dict = {}
+            for key, value in layer_dict.items():
+                key = key.replace("model.", "")
+                key = re.sub(r'^layers\.\d+\.', '', key)
+                server_layer_update_dict[key] = value
+            
+            layer.load_state_dict(server_layer_update_dict, strict=True)
+            layer = layer.half().to(device)
+
+            mem_after = get_gpu_memory(device_id)
+            layer_mem = mem_after - mem_before
+
+            current_group.append(layer)
+            total_memory_mb += layer_mem
+
+            print(f"  ➤ Layer {orig_idx} loaded on {device} | GPU memory used: {layer_mem:.2f} MB")
+
+        all_layers.extend(current_group)
+        del current_group
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        print(f"  Group {group_id} done. Current total estimated memory: {total_memory_mb:.2f} MB")
+
+    server_model.layers = torch.nn.ModuleList(all_layers)
+    
+    print("\n" + "="*60)
+    for i in range(4):
+        if torch.cuda.is_available() and i < torch.cuda.device_count():
+            used = get_gpu_memory(i)
+            print(f"Final GPU cuda:{i} memory allocated: {used:.2f} MB")
+    
+    print(f"✅ Total {len(all_layers)} layers loaded.")
+    print(f"📈 Estimated total model memory (layers only): {total_memory_mb:.2f} MB")
+    return server_model

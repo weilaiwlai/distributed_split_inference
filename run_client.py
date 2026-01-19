@@ -10,8 +10,9 @@ class Config:
         self.num_examples = 100
         self.random_seed = 42
 
-model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
-client_layers=2
+#model_name = "/home/yueshuaibing/models/Qwen3-32B/layers_safetensors"
+model_name = "/home/yueshuaibing/models/Llama-3.1-70B/layers_safetensors"
+client_layers=3
 
 def client():
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
