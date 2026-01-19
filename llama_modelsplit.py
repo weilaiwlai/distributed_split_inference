@@ -348,7 +348,6 @@ class LlamaModel_Server(LlamaPreTrainedModel):
         print(f"position_ids",position_ids)
         #print(f"cache_position",cache_position)
         for i, decoder_layer in enumerate(self.layers):
-            print(f"[DEBUG] Before layer {i}, cache len: {self.kv_cache.get_seq_length()}")
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
             # import pdb; pdb.set_trace()
@@ -379,7 +378,7 @@ class LlamaModel_Server(LlamaPreTrainedModel):
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
-            print(f"[DEBUG] Before layer {i}, cache len: {self.kv_cache.get_seq_length()}")
+            #print(f"[DEBUG] Before layer {i}, cache len: {self.kv_cache.get_seq_length()}")
 
         hidden_states = self.norm(hidden_states)
 
