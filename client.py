@@ -143,7 +143,7 @@ class ModelClient:
         with torch.no_grad():
             hidden_states, causal_mask, position_ids = self.model_client(input_ids=input_ids)
             #print(f"prefill_hidden_states shape: {hidden_states.shape}")
-            print(position_ids)
+            #print("position_ids",position_ids)
             fut_decode = self.request_decode(seq_id, hidden_states)
             msg_decode = fut_decode.result()
             predicted_token_id = msg_decode.predicted_token_id.to(self.device)
@@ -157,8 +157,7 @@ class ModelClient:
             for i in range(max_new_tokens):
                 hidden_states, causal_mask, position_ids = self.model_client(input_ids=predicted_token_id.unsqueeze(0))
                 #print(f"decode_hidden_states shape: {hidden_states.shape}")
-                print(causal_mask)
-                print(position_ids)
+                #print("position_ids",position_ids)
                 fut_decode = self.request_decode(seq_id, hidden_states)
                 msg_decode = fut_decode.result()
                 predicted_token_id = msg_decode.predicted_token_id.to(self.device)

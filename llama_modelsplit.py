@@ -149,9 +149,6 @@ class LlamaModel_Client(LlamaPreTrainedModel):
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
-        tokens_len = self.kv_cache.get_seq_length()
-        print(tokens_len)
-
         return hidden_states, causal_mask, position_ids
 
     def _update_causal_mask(
@@ -271,6 +268,7 @@ class LlamaModel_Server(LlamaPreTrainedModel):
         self.rotary_emb = LlamaRotaryEmbedding(config=self.config)
 
         self.kv_cache = DynamicCache()
+        self.token_len = 0
 
     def get_input_embeddings(self):
         return self.embed_tokens
@@ -330,9 +328,13 @@ class LlamaModel_Server(LlamaPreTrainedModel):
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
-        causal_mask = self._update_causal_mask(
-            attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
-        )
+        cache_position = cache_position + self.token_len
+        position_ids = position_ids + self.token_len
+        self.token_len += hidden_states.shape[1]
+
+        # causal_mask = self._update_causal_mask(
+        #     attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
+        # )
 
         # # embed positions
         # # hidden_states = inputs_embeds
@@ -377,7 +379,6 @@ class LlamaModel_Server(LlamaPreTrainedModel):
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
-
             print(f"[DEBUG] Before layer {i}, cache len: {self.kv_cache.get_seq_length()}")
 
         hidden_states = self.norm(hidden_states)
@@ -480,6 +481,7 @@ class LlamaModel_Server(LlamaPreTrainedModel):
     
     @torch.inference_mode()
     def reset(self):
+        self.token_len = 0
         if isinstance(self.kv_cache, DynamicCache):
             self.kv_cache = DynamicCache()
         elif isinstance(self.kv_cache, StaticCache):

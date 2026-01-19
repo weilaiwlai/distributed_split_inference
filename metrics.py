@@ -98,11 +98,11 @@ class Metrics:
         print(f"Average Throughput: {metrics['avg_throughput']:.2f} tokens/s")
         print("=====================================")
 
-    def save_metrics_to_file(self, save_dir: str = "./outputs/Qwen3-32B"):
+    def save_metrics_to_file(self, save_dir: str = "./outputs/Llama3.1-70B"):
         metrics = self.get_metrics()
         metrics["batch_timestamp"] = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
 
-        filename = "gsm8k_100mbit_client_layers_2.json"
+        filename = "gsm8k_100mbit_client_layers_3.json"
         save_path = os.path.join(save_dir, filename)
         
         try:
