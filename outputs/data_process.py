@@ -25,7 +25,7 @@ def process_json_data(file_path):
         return {}
     
     # 5. 提取除第一个外的所有数据并计算平均值
-    target_data = data[1:]
+    target_data = data[2:]
     sums = {}
     count = len(target_data)
     
@@ -62,7 +62,7 @@ def save_result(result, output_path="average_result.json"):
         raise Exception(f"保存结果时出错：{str(e)}")
 
 # ====================== 请修改这里的配置 ======================
-INPUT_JSON_PATH = "./outputs/Qwen3-32B/humaneval_100mbit_client_layers_1.json"  # 例如："./metrics_data.json" 或 "C:/data/results.json"
+INPUT_JSON_PATH = "./Llama3.1-70B/gsm8k_100mbit_client_layers_3.json"  # 例如："./metrics_data.json" 或 "C:/data/results.json"
 # 结果保存路径（可选修改）
 OUTPUT_JSON_PATH = "average_result.json"
 # =============================================================
